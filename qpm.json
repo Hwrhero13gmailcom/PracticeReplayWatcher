@@ -64,11 +64,6 @@
       "id": "metacore",
       "versionRange": "^1.6.2",
       "additionalData": {}
-    },
-    {
-  "id": "custom-types",
-  "versionRange": "^0.1.0",
-  "additionalData": {}
-}
+    }
   ]
 }
