@@ -10,6 +10,12 @@
 #include "bsml/shared/BSML/MainThreadScheduler.hpp"
 #include "GlobalNamespace/LevelCompletionResults.hpp"
 #include "GlobalNamespace/PracticeSettings.hpp"
+#include "GlobalNamespace/StandardLevelDetailView.hpp"
+#include "GlobalNamespace/StandardLevelDetailViewController.hpp"
+#include "UnityEngine/UI/Button.hpp"
+#include "UnityEngine/GameObject.hpp"
+#include "UnityEngine/Transform.hpp"
+#include "UnityEngine/RectTransform.hpp"
 #include "metacore/shared/events.hpp"
 #include "metacore/shared/songs.hpp"
 #include "metacore/shared/internals.hpp"
@@ -18,14 +24,15 @@ static modloader::ModInfo modInfo{"PracticeReplayWatcher", "0.1.0", 0};
 
 static Paper::ConstLoggerContext<15UL> const logger = Paper::Logger::WithContext<"PracticeReplay">();
 
-// Finds the most recent BeatLeader practice bsor for the given map hash
+// Stores the path of the most recently found practice replay
+static std::string pendingReplayPath = "";
+
 static std::string FindPracticeReplay(std::string const& mapId) {
     std::string replayDir = "/sdcard/ModData/com.beatgames.beatsaber/Mods/bl/replays/";
 
     if (!std::filesystem::exists(replayDir))
         return "";
 
-    // Strip "custom_level_" prefix to get the raw hash
     std::string hash = mapId;
     auto prefix = hash.find("custom_level_");
     if (prefix != std::string::npos)
@@ -62,12 +69,12 @@ static bool PlayReplay(std::string const& path) {
     return (*playFunc)(path);
 }
 
+// After practice ends, store the replay path so we can show a button when menu loads
 ON_EVENT(MetaCore::Events::MapEnded) {
-    // Only care about practice sessions
+    pendingReplayPath = "";
+
     if (!MetaCore::Internals::practiceSettings)
         return;
-
-    // Don't show button if they quit
     if (MetaCore::Internals::mapWasQuit)
         return;
 
@@ -77,17 +84,46 @@ ON_EVENT(MetaCore::Events::MapEnded) {
 
     std::string mapId = (std::string) mapKey.levelId;
 
-    // Give BeatLeader a moment to finish writing the file, then check
+    // Wait 1.5s for BeatLeader to finish writing the file
     BSML::MainThreadScheduler::ScheduleAfterTime(1.5f, [mapId]() {
-        std::string replayPath = FindPracticeReplay(mapId);
-        if (replayPath.empty()) {
+        pendingReplayPath = FindPracticeReplay(mapId);
+        if (!pendingReplayPath.empty())
+            logger.info("Practice replay ready: {}", pendingReplayPath);
+        else
             logger.info("No practice replay found for {}", mapId);
-            return;
-        }
+    });
+}
 
-        logger.info("Found practice replay: {}", replayPath);
+// Hook the level detail view to inject our button when returning from practice
+MAKE_AUTO_HOOK_MATCH(
+    StandardLevelDetailViewController_DidActivate,
+    &GlobalNamespace::StandardLevelDetailViewController::DidActivate,
+    void,
+    GlobalNamespace::StandardLevelDetailViewController* self,
+    bool firstActivation,
+    bool addedToHierarchy,
+    bool screenSystemEnabling
+) {
+    StandardLevelDetailViewController_DidActivate(self, firstActivation, addedToHierarchy, screenSystemEnabling);
+
+    if (pendingReplayPath.empty())
+        return;
+
+    std::string replayPath = pendingReplayPath;
+    pendingReplayPath = ""; // clear so button only shows once
+
+    // Find the action buttons area to attach our button near
+    auto parent = self->get_transform();
+
+    auto btn = BSML::Lite::CreateUIButton(parent, "Watch Practice Replay", [replayPath]() {
+        logger.info("Playing practice replay: {}", replayPath);
         PlayReplay(replayPath);
     });
+
+    // Position below the normal play/practice buttons
+    auto rect = btn->GetComponent<UnityEngine::RectTransform*>();
+    rect->set_anchoredPosition({0.0f, -38.0f});
+    rect->set_sizeDelta({50.0f, 10.0f});
 }
 
 extern "C" void setup(CModInfo* info) {
@@ -98,5 +134,6 @@ extern "C" void setup(CModInfo* info) {
 extern "C" void late_load() {
     il2cpp_functions::Init();
     MetaCore::Events::Setup();
+    Hooks::Install();
     logger.info("PracticeReplayWatcher loaded");
 }
