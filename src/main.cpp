@@ -10,19 +10,32 @@
 #include "bsml/shared/BSML/MainThreadScheduler.hpp"
 #include "GlobalNamespace/MenuTransitionsHelper.hpp"
 #include "GlobalNamespace/PracticeSettings.hpp"
-#include "GlobalNamespace/StandardLevelDetailViewController.hpp"
+#include "GlobalNamespace/BeatmapKey.hpp"
+#include "GlobalNamespace/BeatmapLevel.hpp"
+#include "GlobalNamespace/OverrideEnvironmentSettings.hpp"
+#include "GlobalNamespace/ColorScheme.hpp"
+#include "GlobalNamespace/GameplayModifiers.hpp"
+#include "GlobalNamespace/PlayerSpecificSettings.hpp"
+#include "GlobalNamespace/EnvironmentsListModel.hpp"
+#include "GlobalNamespace/StandardLevelScenesTransitionSetupDataSO.hpp"
 #include "GlobalNamespace/LevelCompletionResults.hpp"
+#include "GlobalNamespace/RecordingToolManager.hpp"
+#include "System/Action.hpp"
+#include "System/Action_1.hpp"
 #include "System/Action_2.hpp"
-#include "UnityEngine/RectTransform.hpp"
+#include "System/Nullable_1.hpp"
+#include "Zenject/DiContainer.hpp"
 #include "metacore/shared/events.hpp"
 #include "metacore/shared/songs.hpp"
 #include "metacore/shared/internals.hpp"
 
+using namespace GlobalNamespace;
+
 static modloader::ModInfo modInfo{"PracticeReplayWatcher", "0.1.0", 0};
 static Paper::ConstLoggerContext<15UL> const logger = Paper::Logger::WithContext<"PracticeReplay">();
 
-static std::string pendingReplayPath = "";
 static bool lastMapWasPractice = false;
+static std::string pendingReplayPath = "";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,46 +68,48 @@ static std::string FindPracticeReplay(std::string const& mapId) {
     return matches[0].path().string();
 }
 
-static bool PlayReplay(std::string const& path) {
+static void PlayReplay(std::string const& path) {
     static auto playFunc = CondDeps::Find<bool, std::string>("replay", "PlayBSORFromFileForced");
     if (!playFunc) {
         logger.error("Could not find PlayBSORFromFileForced — is the Replay mod installed?");
-        return false;
+        return;
     }
-    return (*playFunc)(path);
+    (*playFunc)(path);
 }
 
 // ─── hooks ────────────────────────────────────────────────────────────────────
 
-// Track whether the level was started in practice mode
 MAKE_AUTO_HOOK_MATCH(
     MenuTransitionsHelper_StartStandardLevel,
-    &GlobalNamespace::MenuTransitionsHelper::StartStandardLevel,
+    &MenuTransitionsHelper::StartStandardLevel,
     void,
-    GlobalNamespace::MenuTransitionsHelper* self,
+    MenuTransitionsHelper* self,
     StringW f1,
-    ByRef<GlobalNamespace::BeatmapKey> f2,
-    GlobalNamespace::BeatmapLevel* f3,
-    GlobalNamespace::OverrideEnvironmentSettings* f4,
-    GlobalNamespace::ColorScheme* f5,
-    GlobalNamespace::ColorScheme* f6,
-    GlobalNamespace::GameplayModifiers* f7,
-    GlobalNamespace::PlayerSpecificSettings* f8,
-    GlobalNamespace::PracticeSettings* f9,
-    GlobalNamespace::EnvironmentsListModel* f10,
-    bool f11,
-    bool f12,
-    System::Action* f13,
-    System::Action_1<::Zenject::DiContainer*>* f14,
-    System::Action_2<UnityW<GlobalNamespace::StandardLevelScenesTransitionSetupDataSO>, GlobalNamespace::LevelCompletionResults*>* f15,
-    System::Action_2<UnityW<GlobalNamespace::StandardLevelScenesTransitionSetupDataSO>, GlobalNamespace::LevelCompletionResults*>* f16
+    ByRef<BeatmapKey> f2,
+    BeatmapLevel* f3,
+    OverrideEnvironmentSettings* f4,
+    ColorScheme* f5,
+    bool f6,
+    ColorScheme* f7,
+    GameplayModifiers* f8,
+    PlayerSpecificSettings* f9,
+    PracticeSettings* f10,
+    EnvironmentsListModel* f11,
+    StringW f12,
+    bool f13,
+    bool f14,
+    System::Action* f15,
+    System::Action_1<Zenject::DiContainer*>* f16,
+    System::Action_2<UnityW<StandardLevelScenesTransitionSetupDataSO>, LevelCompletionResults*>* f17,
+    System::Action_2<UnityW<StandardLevelScenesTransitionSetupDataSO>, LevelCompletionResults*>* f18,
+    System::Nullable_1<RecordingToolManager::SetupData> f19
 ) {
-    lastMapWasPractice = (f9 != nullptr);
+    lastMapWasPractice = (f10 != nullptr);
     pendingReplayPath = "";
-    MenuTransitionsHelper_StartStandardLevel(self, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16);
+    MenuTransitionsHelper_StartStandardLevel(self, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19);
 }
 
-// When returning to menu after a practice session, find the replay file
+// After practice ends, find the replay and show a popup button
 ON_EVENT(MetaCore::Events::MapEnded) {
     if (!lastMapWasPractice)
         return;
@@ -107,42 +122,33 @@ ON_EVENT(MetaCore::Events::MapEnded) {
 
     std::string mapId = (std::string) mapKey.levelId;
 
-    // Wait for BeatLeader to finish writing
+    // Wait 1.5s for BeatLeader to finish writing the file
     BSML::MainThreadScheduler::ScheduleAfterTime(1.5f, [mapId]() {
-        pendingReplayPath = FindPracticeReplay(mapId);
-        if (!pendingReplayPath.empty())
-            logger.info("Practice replay ready: {}", pendingReplayPath);
-        else
+        std::string path = FindPracticeReplay(mapId);
+        if (path.empty()) {
             logger.info("No practice replay found for {}", mapId);
+            return;
+        }
+        logger.info("Practice replay ready: {}", path);
+
+        // Show a floating button using BSML modal
+        BSML::Lite::CreateCanvas();  // ensure UI canvas exists
+        auto screen = BSML::Lite::CreateFloatingScreen({40, 15}, {0, 3, 4}, {0, 0, 0}, 0, false, true);
+        auto btn = BSML::Lite::CreateUIButton(screen->get_transform(), "Watch Practice Replay", [path, screen]() {
+            UnityEngine::Object::Destroy(screen);
+            PlayReplay(path);
+        });
+        auto closeBtn = BSML::Lite::CreateUIButton(screen->get_transform(), "X", [screen]() {
+            UnityEngine::Object::Destroy(screen);
+        });
+
+        auto btnRect = btn->GetComponent<UnityEngine::RectTransform*>();
+        btnRect->set_anchoredPosition({-5.0f, 0.0f});
+
+        auto closeRect = closeBtn->GetComponent<UnityEngine::RectTransform*>();
+        closeRect->set_anchoredPosition({15.0f, 0.0f});
+        closeRect->set_sizeDelta({8.0f, 8.0f});
     });
-}
-
-// Inject a button on the song detail screen if we have a pending replay
-MAKE_AUTO_HOOK_MATCH(
-    StandardLevelDetailViewController_DidActivate,
-    &GlobalNamespace::StandardLevelDetailViewController::DidActivate,
-    void,
-    GlobalNamespace::StandardLevelDetailViewController* self,
-    bool firstActivation,
-    bool addedToHierarchy,
-    bool screenSystemEnabling
-) {
-    StandardLevelDetailViewController_DidActivate(self, firstActivation, addedToHierarchy, screenSystemEnabling);
-
-    if (pendingReplayPath.empty())
-        return;
-
-    std::string replayPath = pendingReplayPath;
-    pendingReplayPath = "";
-
-    auto btn = BSML::Lite::CreateUIButton(self->get_transform(), "Watch Practice Replay", [replayPath]() {
-        logger.info("Playing practice replay: {}", replayPath);
-        PlayReplay(replayPath);
-    });
-
-    auto rect = btn->GetComponent<UnityEngine::RectTransform*>();
-    rect->set_anchoredPosition({0.0f, -38.0f});
-    rect->set_sizeDelta({50.0f, 10.0f});
 }
 
 // ─── entry points ─────────────────────────────────────────────────────────────
@@ -154,9 +160,6 @@ extern "C" void setup(CModInfo* info) {
 
 extern "C" void late_load() {
     il2cpp_functions::Init();
-
     INSTALL_HOOK(logger, MenuTransitionsHelper_StartStandardLevel);
-    INSTALL_HOOK(logger, StandardLevelDetailViewController_DidActivate);
-
     logger.info("PracticeReplayWatcher loaded");
 }
