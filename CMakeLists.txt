@@ -27,7 +27,11 @@ add_library(
 
 target_include_directories(${COMPILE_ID} PRIVATE ${INCLUDE_DIR})
 
-target_link_libraries(${COMPILE_ID} PRIVATE -llog -landroid)
+target_link_libraries(${COMPILE_ID} PRIVATE
+    -llog
+    -landroid
+    ${CMAKE_CURRENT_SOURCE_DIR}/extern/libs/libcustom-types.so
+)
 
 include(extern.cmake)
 
