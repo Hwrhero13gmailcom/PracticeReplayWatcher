@@ -1,6 +1,6 @@
 name: Build
 env:
-  module_id: practice-replay-watcher
+  module_id: practice-replay-watcher_0_1_0
   qmodName: PracticeReplayWatcher
 on:
   workflow_dispatch:
@@ -40,22 +40,20 @@ jobs:
           cd ${GITHUB_WORKSPACE}
           cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -B build
           cmake --build build
-      - name: Get Library Name
-        id: libname
+      - name: Package qmod
         run: |
-          cd ./build/
-          pattern="lib${module_id}*.so"
-          files=( $pattern )
-          echo ::set-output name=NAME::"${files[0]}"
-      - name: Upload non-debug artifact
+          cd ${GITHUB_WORKSPACE}
+          cp build/lib${module_id}.so lib${module_id}.so
+          zip -j ${{ env.qmodName }}.qmod mod.json lib${module_id}.so
+      - name: Upload qmod artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.libname.outputs.NAME }}
-          path: ./build/${{ steps.libname.outputs.NAME }}
+          name: ${{ env.qmodName }}.qmod
+          path: ./${{ env.qmodName }}.qmod
           if-no-files-found: error
-      - name: Upload debug artifact
+      - name: Upload so artifact
         uses: actions/upload-artifact@v4
         with:
-          name: debug_${{ steps.libname.outputs.NAME }}
-          path: ./build/debug/${{ steps.libname.outputs.NAME }}
+          name: lib${{ env.module_id }}.so
+          path: ./build/lib${{ env.module_id }}.so
           if-no-files-found: error
