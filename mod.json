@@ -1,18 +1,18 @@
 {
-  "_QPModVersion": "0.1.1",
+  "$schema": "https://raw.githubusercontent.com/Lauriethefish/QuestPatcher.QMod/main/QuestPatcher.QMod/Resources/qmod.schema.json",
+  "_QPVersion": "0.1.1",
   "name": "PracticeReplayWatcher",
   "id": "practice-replay-watcher",
   "author": "You",
   "version": "0.1.0",
+  "modloader": "Scotland2",
   "packageId": "com.beatgames.beatsaber",
   "packageVersion": "1.40.8",
-  "description": "Adds a button to watch your practice replays after finishing a practice session.",
-  "isLibrary": false,
-  "modFiles": [
+  "description": "Watch your practice replays after finishing a practice session.",
+  "dependencies": [],
+  "lateModFiles": [
     "libpractice-replay-watcher_0_1_0.so"
   ],
   "libraryFiles": [],
-  "dependencies": [],
-  "fileCopies": [],
-  "copyExtensions": []
+  "fileCopies": []
 }
