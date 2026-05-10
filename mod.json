@@ -1,5 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/Lauriethefish/QuestPatcher.QMod/main/QuestPatcher.QMod/Resources/qmod.schema.json",
+  "_QPModVersion": "0.1.1",
   "packageVersion": "1.40.8",
   "name": "PracticeReplayWatcher",
   "id": "practice-replay-watcher",
