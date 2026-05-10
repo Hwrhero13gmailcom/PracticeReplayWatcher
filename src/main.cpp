@@ -9,20 +9,16 @@
 
 #include "beatsaber-hook/shared/utils/logging.hpp"
 #include "conditional-dependencies/shared/main.hpp"
+#include "bsml/shared/BSML-Lite.hpp"
+#include "bsml/shared/BSML/MainThreadScheduler.hpp"
+#include "UnityEngine/RectTransform.hpp"
+#include "UnityEngine/Object.hpp"
 #include "metacore/shared/events.hpp"
 #include "metacore/shared/songs.hpp"
 #include "metacore/shared/internals.hpp"
 
 static modloader::ModInfo modInfo{"PracticeReplayWatcher", "0.1.0", 0};
 static Paper::ConstLoggerContext<15UL> const logger = Paper::Logger::WithContext<"PracticeReplay">();
-
-static std::mutex pendingMutex;
-static std::vector<std::function<void()>> pendingCallbacks;
-
-static void RunOnMainThread(std::function<void()> fn) {
-    std::lock_guard<std::mutex> lock(pendingMutex);
-    pendingCallbacks.push_back(std::move(fn));
-}
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -68,17 +64,29 @@ static void PlayReplay(std::string const& path) {
     (*playFunc)(path);
 }
 
-// ─── events ───────────────────────────────────────────────────────────────────
+static void ShowReplayButton(std::string const& path) {
+    auto screen = BSML::Lite::CreateFloatingScreen(
+        {55, 18}, {0, 3, 4}, {0, 0, 0}, 0, false, true
+    );
 
-ON_EVENT(MetaCore::Events::Update) {
-    std::vector<std::function<void()>> toRun;
-    {
-        std::lock_guard<std::mutex> lock(pendingMutex);
-        toRun.swap(pendingCallbacks);
-    }
-    for (auto& fn : toRun)
-        fn();
+    auto watchBtn = BSML::Lite::CreateUIButton(
+        screen->get_transform(), "Watch Practice Replay",
+        [path, screen]() {
+            UnityEngine::Object::Destroy(screen);
+            PlayReplay(path);
+        }
+    );
+    watchBtn->GetComponent<UnityEngine::RectTransform*>()->set_anchoredPosition({-8.0f, 0.0f});
+
+    auto closeBtn = BSML::Lite::CreateUIButton(
+        screen->get_transform(), "X",
+        [screen]() { UnityEngine::Object::Destroy(screen); }
+    );
+    closeBtn->GetComponent<UnityEngine::RectTransform*>()->set_anchoredPosition({20.0f, 0.0f});
+    closeBtn->GetComponent<UnityEngine::RectTransform*>()->set_sizeDelta({8.0f, 8.0f});
 }
+
+// ─── events ───────────────────────────────────────────────────────────────────
 
 ON_EVENT(MetaCore::Events::MapEnded) {
     if (MetaCore::Internals::mapWasQuit)
@@ -100,7 +108,9 @@ ON_EVENT(MetaCore::Events::MapEnded) {
         }
 
         logger.info("Practice replay found: {}", path);
-        RunOnMainThread([path]() { PlayReplay(path); });
+        BSML::MainThreadScheduler::Schedule([path]() {
+            ShowReplayButton(path);
+        });
     }).detach();
 }
 
