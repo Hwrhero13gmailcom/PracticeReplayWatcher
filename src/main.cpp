@@ -22,7 +22,7 @@ static Paper::ConstLoggerContext<15UL> const logger = Paper::Logger::WithContext
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-static std::string FindRecentPracticeReplay(std::string const& mapId) {
+static std::string FindMostRecentPracticeReplay(std::string const& mapId) {
     std::string replayDir = "/sdcard/ModData/com.beatgames.beatsaber/Mods/bl/replays/";
     if (!std::filesystem::exists(replayDir))
         return "";
@@ -32,7 +32,6 @@ static std::string FindRecentPracticeReplay(std::string const& mapId) {
     if (prefix != std::string::npos)
         hash = hash.substr(prefix + 13);
 
-    auto now = std::filesystem::file_time_type::clock::now();
     std::vector<std::filesystem::directory_entry> matches;
 
     for (auto const& entry : std::filesystem::directory_iterator(replayDir)) {
@@ -41,14 +40,13 @@ static std::string FindRecentPracticeReplay(std::string const& mapId) {
         if (name.find("-practice-") == std::string::npos) continue;
         if (name.find(hash) == std::string::npos) continue;
         if (!name.ends_with(".bsor")) continue;
-        auto age = now - entry.last_write_time();
-        if (age < std::chrono::seconds(30))
-            matches.push_back(entry);
+        matches.push_back(entry);
     }
 
     if (matches.empty())
         return "";
 
+    // Return the most recently modified file
     std::sort(matches.begin(), matches.end(), [](auto const& a, auto const& b) {
         return a.last_write_time() > b.last_write_time();
     });
@@ -99,11 +97,12 @@ ON_EVENT(MetaCore::Events::MapEnded) {
     std::string mapId = (std::string) mapKey.levelId;
 
     std::thread([mapId]() {
+        // Wait for BeatLeader to finish writing
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
-        std::string path = FindRecentPracticeReplay(mapId);
+        std::string path = FindMostRecentPracticeReplay(mapId);
         if (path.empty()) {
-            logger.info("No recent practice replay found for {}", mapId);
+            logger.info("No practice replay found for {}", mapId);
             return;
         }
 
