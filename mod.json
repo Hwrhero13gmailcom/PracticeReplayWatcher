@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Lauriethefish/QuestPatcher.QMod/main/QuestPatcher.QMod/Resources/qmod.schema.json",
+  "packageVersion": "1.40.8",
+  "name": "PracticeReplayWatcher",
+  "id": "practice-replay-watcher",
+  "author": "You",
+  "version": "0.1.0",
+  "description": "Adds a button to watch your practice replays after finishing a practice session.",
+  "isLibrary": false,
+  "modFiles": [
+    "libpractice-replay-watcher_0_1_0.so"
+  ],
+  "libraryFiles": [],
+  "dependencies": [
+    {
+      "id": "replay",
+      "version": "^0.5.2",
+      "downloadIfMissing": "https://github.com/Metalit/Replay/releases/latest/download/Replay.qmod"
+    }
+  ],
+  "fileCopies": [],
+  "copyExtensions": []
+}
